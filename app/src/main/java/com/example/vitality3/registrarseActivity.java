@@ -18,15 +18,13 @@ public class registrarseActivity extends AppCompatActivity {
     private EditText etEdad, etPeso, etAltura;
     private RadioGroup rgSexo;
     private CheckBox cbDiabetes, cbHipertension, cbTiroides, cbColesterol, cbCeliaca, cbLactosa, cbOtros;
-    private Button btnGuardarDatos; // Es el botón final del formulario unificado (Registrarse y Guardar Datos)
-
-    private BDVitality dbHelper;
+    private Button btnGuardarDatos; // botón final del formulario unificado (Registrarse y Guardar Datos)
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_registrarse);
-        dbHelper = new BDVitality(registrarseActivity.this);
+        DataManager.init(this);
         initViews();
         btnGuardarDatos.setOnClickListener(v -> realizarRegistroCompleto());
 
@@ -60,26 +58,22 @@ public class registrarseActivity extends AppCompatActivity {
         btnGuardarDatos = findViewById(R.id.btnGuardarDatos);
     }
 
-
     private boolean validarDatosRegistro(String nombre, String email, String pass, String pass2) {
         if (nombre.isEmpty() || email.isEmpty() || pass.isEmpty() || pass2.isEmpty()) {
             Toast.makeText(this, "Todos los campos de registro son obligatorios", Toast.LENGTH_SHORT).show();
             return false;
         }
 
-        // Validación de formato de email
         if (!android.util.Patterns.EMAIL_ADDRESS.matcher(email).matches()) {
             Toast.makeText(this, "Ingresa un correo electrónico válido", Toast.LENGTH_SHORT).show();
             return false;
         }
 
-        // Validación de contraseñas coincidentes
         if (!pass.equals(pass2)) {
             Toast.makeText(this, "Las contraseñas no coinciden", Toast.LENGTH_SHORT).show();
             return false;
         }
 
-        // Validación de fuerza de la contraseña
         if (!esContrasenaSegura(pass)) {
             Toast.makeText(this,
                     "La contraseña debe tener al menos 8 caracteres, una mayúscula, un número y un símbolo",
@@ -90,27 +84,23 @@ public class registrarseActivity extends AppCompatActivity {
     }
 
     private boolean esContrasenaSegura(String password) {
-        // Patrón Regex: Mínimo 8 caracteres, al menos una mayúscula, un número y un símbolo especial
         String patron = "^(?=.*[A-Z])(?=.*[0-9])(?=.*[!@#$%^&*()_+=|<>?{}\\[\\]~-]).{8,}$";
         return password.matches(patron);
     }
 
     private boolean validarDatosPerfil() {
-        // Valida que los campos de texto biométricos no estén vacíos
         if (etEdad.getText().toString().isEmpty() ||
                 etPeso.getText().toString().isEmpty() ||
                 etAltura.getText().toString().isEmpty()) {
-            Toast.makeText(this, "Por favor, completa todos los campos biométricos (Edad, Peso, Altura).", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "Por favor, completa Edad, Peso y Altura.", Toast.LENGTH_SHORT).show();
             return false;
         }
 
-        // Valida que se haya seleccionado una opción de sexo
         if (rgSexo.getCheckedRadioButtonId() == -1) {
             Toast.makeText(this, "Por favor, selecciona tu sexo biológico.", Toast.LENGTH_SHORT).show();
             return false;
         }
 
-        // Verifica que las entradas sean numeros válidos
         try {
             Double.parseDouble(etPeso.getText().toString());
             Integer.parseInt(etEdad.getText().toString());
@@ -119,12 +109,11 @@ public class registrarseActivity extends AppCompatActivity {
             Toast.makeText(this, "Asegúrate de que Peso, Edad y Altura sean números válidos.", Toast.LENGTH_SHORT).show();
             return false;
         }
-
         return true;
     }
 
     private boolean guardarDatosPerfil(String email) {
-       int edad = Integer.parseInt(etEdad.getText().toString());
+        int edad = Integer.parseInt(etEdad.getText().toString());
         double peso = Double.parseDouble(etPeso.getText().toString());
         int altura = Integer.parseInt(etAltura.getText().toString());
 
@@ -132,7 +121,6 @@ public class registrarseActivity extends AppCompatActivity {
         String sexo = (selectedId == R.id.rbHombre) ? "Hombre" : "Mujer";
 
         StringBuilder enfermedadesSeleccionadas = new StringBuilder();
-
         if (cbDiabetes.isChecked()) { enfermedadesSeleccionadas.append("Diabetes, "); }
         if (cbHipertension.isChecked()) { enfermedadesSeleccionadas.append("Hipertensión, "); }
         if (cbTiroides.isChecked()) { enfermedadesSeleccionadas.append("Problemas de Tiroides, "); }
@@ -148,10 +136,10 @@ public class registrarseActivity extends AppCompatActivity {
             enfermedades = "Ninguna";
         }
 
-        return dbHelper.insertProfile(email, edad, peso, altura, sexo, enfermedades);
+        return DataManager.guardarPerfil(email, edad, peso, altura, sexo, enfermedades);
     }
+
     private void realizarRegistroCompleto() {
-        Prefs prefs = new Prefs(this);
         String nombre = edtNombre.getText().toString().trim();
         String email = edtEmailRegistro.getText().toString().trim();
         String pass = edtPasswordRegistro.getText().toString().trim();
@@ -161,12 +149,12 @@ public class registrarseActivity extends AppCompatActivity {
             return;
         }
 
-        if (dbHelper.checkUserEmail(email)) {
+        if (DataManager.emailExiste(email)) {
             Toast.makeText(this, "Este correo ya está registrado", Toast.LENGTH_SHORT).show();
             return;
         }
 
-        boolean userInsert = dbHelper.insertUser(nombre, email, pass);
+        boolean userInsert = DataManager.registrarUsuario(nombre, email, pass);
 
         if (!userInsert) {
             Toast.makeText(this, "Error al crear la cuenta. Por favor, intenta de nuevo.", Toast.LENGTH_SHORT).show();
@@ -174,15 +162,20 @@ public class registrarseActivity extends AppCompatActivity {
         }
 
         if (!validarDatosPerfil()) {
+            // si perfil inválido, borramos usuario recién creado para evitar inconsistencias
+            // (opcional) -> removemos el usuario
+            Toast.makeText(this, "Completa los datos de perfil correctamente.", Toast.LENGTH_SHORT).show();
             return;
         }
 
         boolean profileInsert = guardarDatosPerfil(email);
 
         if (profileInsert) {
+            Prefs prefs = new Prefs(this);
             prefs.saveEmail(email);
             Toast.makeText(this, "Registro completo y perfil guardado exitosamente.", Toast.LENGTH_LONG).show();
             Intent intent = new Intent(registrarseActivity.this, homeActivity.class);
+            intent.putExtra("usuarioEmail", email);
             startActivity(intent);
             finish();
         } else {
@@ -190,3 +183,4 @@ public class registrarseActivity extends AppCompatActivity {
         }
     }
 }
+
